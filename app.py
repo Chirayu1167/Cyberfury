@@ -7,6 +7,7 @@ from transformers import AutoImageProcessor, AutoModelForImageClassification
 import tensorflow as tf
 import tensorflow_hub as hub
 import numpy as np
+import os
 
 # PAGE CONFIG
 st.set_page_config(page_title="CyberFury | AI Forensic Lab", layout="wide", page_icon="⚡")
@@ -28,30 +29,79 @@ class CyberFuryEngine:
     @staticmethod
     @st.cache_resource
     def load_model():
-        """Load AI detection model with optimization"""
-        model_name = "Organika/sdxl-detector"
-        processor = AutoImageProcessor.from_pretrained(model_name, use_fast=True)
-        model = AutoModelForImageClassification.from_pretrained(model_name)
-        
-        # Device Detection
-        if torch.cuda.is_available():
-            device = torch.device("cuda")
-        else:
-            device = torch.device("cpu")
+        """Load AI detection model with optimization and error handling"""
+        try:
+            # Try different model loading strategies
+            model_name = "Organika/sdxl-detector"
             
-        model.to(device)
-        model.eval()  # Set to evaluation mode for speed
-        return processor, model, device
+            # Strategy 1: Check for local models first
+            local_path = "./models/sdxl-detector"
+            if os.path.exists(local_path):
+                st.info("📦 Loading from local cache...")
+                model_name = local_path
+            
+            # Set environment variables for HuggingFace
+            os.environ['HF_HUB_DISABLE_SYMLINKS_WARNING'] = '1'
+            
+            # Load processor and model
+            processor = AutoImageProcessor.from_pretrained(
+                model_name, 
+                use_fast=True,
+                resume_download=True,
+                force_download=False,
+                local_files_only=os.path.exists(local_path)
+            )
+            
+            model = AutoModelForImageClassification.from_pretrained(
+                model_name,
+                resume_download=True,
+                force_download=False,
+                local_files_only=os.path.exists(local_path)
+            )
+            
+            # Device Detection
+            if torch.cuda.is_available():
+                device = torch.device("cuda")
+                st.success("🚀 GPU Acceleration Enabled")
+            else:
+                device = torch.device("cpu")
+                st.info("💻 Running on CPU")
+                
+            model.to(device)
+            model.eval()  # Set to evaluation mode for speed
+            
+            return processor, model, device
+            
+        except OSError as e:
+            st.error("🌐 **Network Connection Error**")
+            st.warning("""
+            **Unable to download model from HuggingFace.** This is a Streamlit Cloud limitation.
+            
+            **Solutions:**
+            1. Contact support to enable network access
+            2. Use pre-downloaded models (see GitHub README)
+            3. Deploy on platforms with unrestricted internet (Heroku, Railway, etc.)
+            """)
+            st.code(f"Error details: {str(e)}", language="bash")
+            return None, None, None
+            
+        except Exception as e:
+            st.error(f"❌ Unexpected Error: {str(e)}")
+            st.info("💡 Try refreshing the page or contact support")
+            return None, None, None
     
     @staticmethod
     @st.cache_resource
     def load_google_detector():
         """Load Google's TensorFlow Hub Object Detection Model - CACHED for speed"""
         try:
+            st.info("🔄 Loading Google AI detector...")
             detector = hub.load("https://tfhub.dev/google/openimages_v4/ssd/mobilenet_v2/1")
+            st.success("✅ Google detector loaded")
             return detector
         except Exception as e:
-            st.warning(f"Google detector loading issue: {e}")
+            st.warning(f"⚠️ Google detector unavailable: {str(e)}")
+            st.info("Object detection will be disabled, but AI detection will still work.")
             return None
 
     @staticmethod
@@ -111,6 +161,7 @@ class CyberFuryEngine:
                 "confidence": top_score
             }
         except Exception as e:
+            st.warning(f"Object detection error: {str(e)}")
             return {
                 "objects_found": 0,
                 "top_object": "Detection failed",
@@ -177,7 +228,7 @@ def draw_gauge(val, verdict):
 
 def main():
     st.markdown("<h1 style='text-align:center;'>⚡ CYBERFURY: FORENSIC SCANNER</h1>", unsafe_allow_html=True)
-    st.markdown("<p style='text-align:center; color: #888;'>Powered by Google TensorFlow Hub</p>", unsafe_allow_html=True)
+    st.markdown("<p style='text-align:center; color: #888;'>Powered by Google TensorFlow Hub & HuggingFace Transformers</p>", unsafe_allow_html=True)
     
     col1, col2 = st.columns(2)
     
@@ -185,6 +236,8 @@ def main():
         st.session_state.data = None
     if 'google_detector' not in st.session_state:
         st.session_state.google_detector = None
+    if 'models_loaded' not in st.session_state:
+        st.session_state.models_loaded = False
 
     with col1:
         file = st.file_uploader("Upload Image", type=["jpg", "png", "jpeg", "webp"])
@@ -193,16 +246,27 @@ def main():
             st.image(img, use_container_width=True)
             
             if st.button("🚨 RUN FORENSIC SCAN", type="primary"):
-                with st.spinner("🔍 Decoding pixel signatures..."):
+                with st.spinner("🔍 Initializing AI detection engines..."):
+                    # Load main model
                     proc, mod, dev = CyberFuryEngine.load_model()
+                    
+                    # Check if models loaded successfully
+                    if proc is None or mod is None or dev is None:
+                        st.error("❌ **Critical Error:** AI detection model failed to load.")
+                        st.stop()
+                    
+                    # Load Google detector (only once)
                     if st.session_state.google_detector is None:
                         with st.spinner("⚙️ Loading Google AI models (one-time setup)..."):
                             st.session_state.google_detector = CyberFuryEngine.load_google_detector()
                     
                     # Run analysis
-                    st.session_state.data = CyberFuryEngine.analyze(
-                        img, proc, mod, dev, st.session_state.google_detector
-                    )
+                    with st.spinner("🧬 Analyzing pixel signatures..."):
+                        st.session_state.data = CyberFuryEngine.analyze(
+                            img, proc, mod, dev, st.session_state.google_detector
+                        )
+                    
+                    st.session_state.models_loaded = True
                     st.rerun()  # Force immediate UI update
 
     with col2:
@@ -237,6 +301,13 @@ def main():
             """, unsafe_allow_html=True)
         else:
             st.info("⚡ System Online. Awaiting evidence for forensic deep-scan.")
+            
+            # Show system status
+            if not st.session_state.models_loaded:
+                with st.expander("📊 System Status"):
+                    st.write("**AI Detection Engine:** Ready to load")
+                    st.write("**Object Detection:** Ready to load")
+                    st.write("**Processing Unit:** Auto-detect (CPU/GPU)")
 
 if __name__ == "__main__":
     main()
