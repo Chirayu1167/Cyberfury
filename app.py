@@ -51,7 +51,8 @@ class CyberFuryEngine:
             outputs = model(**inputs)
             probs = torch.nn.functional.softmax(outputs.logits, dim=-1)[0]
         ai_score = probs[0].item()
-        return {"verdict": "AI" if ai_score > 0.99 else "REAL", "conf": ai_score * 100}
+        # THRESHOLD UPDATED TO 99.99%
+        return {"verdict": "AI" if ai_score > 0.9999 else "REAL", "conf": ai_score * 100}
 
     @staticmethod
     def extract_metadata(image):
@@ -60,21 +61,18 @@ class CyberFuryEngine:
         suspicious_flags = []
         
         try:
-            # Extract EXIF data
             exif_data = image._getexif()
             if exif_data:
                 for tag_id, value in exif_data.items():
                     tag_name = TAGS.get(tag_id, tag_id)
                     metadata[tag_name] = str(value)
                     
-                    # Check for AI generation indicators
                     if tag_name == "Software":
                         ai_indicators = ["midjourney", "dalle", "stable diffusion", "stablediffusion", 
                                        "automatic1111", "comfyui", "leonardo", "playground"]
                         if any(indicator in str(value).lower() for indicator in ai_indicators):
                             suspicious_flags.append(f"AI Software Detected: {value}")
                     
-                    # Missing camera signatures
                     if tag_name == "Make" and not value:
                         suspicious_flags.append("Missing Camera Manufacturer")
                     if tag_name == "Model" and not value:
@@ -85,7 +83,6 @@ class CyberFuryEngine:
         except (AttributeError, KeyError):
             suspicious_flags.append("⚠️ NO METADATA FOUND - Highly suspicious for AI images")
         
-        # Check image format indicators
         img_format = image.format
         if img_format in ["PNG", "WEBP"] and not metadata:
             suspicious_flags.append(f"⚠️ {img_format} with no metadata - Common AI output format")
@@ -123,48 +120,37 @@ def main():
             st.markdown(f"""
                 <div class='status-box' style='border-color: {color};'>
                     <h2 style='color: {color}; margin-top:0;'>{res['verdict']} DETECTED</h2>
-                    <p>Confidence: <b>{res['conf']:.2f}%</b></p>
+                    <p>Confidence: <b>{res['conf']:.4f}%</b></p>
                     <hr style='border: 0.5px solid {color}; opacity: 0.3;'>
                     <p style='color: #00f3ff;'><b>FACT CHECKING:</b></p>
                 </div>
             """, unsafe_allow_html=True)
 
-            # 1. Google Search Operator (Filename Scan)
-            # Searches Google for the exact filename, which often reveals the AI source
             query = urllib.parse.quote(f'"{file.name}"')
             st.link_button("📂 SEARCH FILENAME SOURCE", f"https://www.google.com/search?q={query}")
-
-            # 2. Google Fact Check Explorer
-            # Direct link to Google's database of debunked images/claims
             st.link_button("🌍 CHECK GOOGLE FACT-CHECK DATABASE", "https://toolbox.google.com/factcheck/explorer")
 
-            # 3. Google Cloud DLP + Metadata Analysis
-            # Scans image metadata and hidden information to detect missing camera signatures
             if st.session_state.metadata:
                 meta = st.session_state.metadata
-                
                 st.markdown("---")
                 st.markdown("### 📊 3. Google Cloud DLP + Metadata Analysis")
-                st.markdown("*Scans image metadata and hidden information to detect missing camera signatures or artificial generation traces.*")
                 
                 if meta["flags"]:
                     flag_color = "#ff003c"
-                    flag_icon = "🚩"
                     st.markdown(f"""
                         <div class='metadata-box' style='border-color: {flag_color};'>
-                            <p style='color: {flag_color}; font-weight: bold;'>{flag_icon} SUSPICIOUS INDICATORS DETECTED:</p>
+                            <p style='color: {flag_color}; font-weight: bold;'>🚩 SUSPICIOUS INDICATORS DETECTED:</p>
                     """, unsafe_allow_html=True)
                     for flag in meta["flags"]:
                         st.markdown(f"• {flag}")
                     st.markdown("</div>", unsafe_allow_html=True)
                 else:
-                    st.markdown(f"""
+                    st.markdown("""
                         <div class='metadata-box' style='border-color: #00f3ff;'>
                             <p style='color: #00f3ff; font-weight: bold;'>✓ Camera metadata present</p>
                         </div>
                     """, unsafe_allow_html=True)
                 
-                # Show key metadata if available
                 if meta["metadata"]:
                     with st.expander("🔍 View Raw Metadata"):
                         important_keys = ["Make", "Model", "Software", "DateTime", "DateTimeOriginal"]
@@ -172,7 +158,6 @@ def main():
                             if key in meta["metadata"]:
                                 st.text(f"{key}: {meta['metadata'][key]}")
 
-            # 4. Manual Lens Bridge (The most reliable 403-free way)
             st.markdown("---")
             st.info("💡 **Manual Cross-Check:** Right-click the image on the left, select **'Copy Image'**, then click below and press **Ctrl+V**.")
             st.link_button("🔍 OPEN GOOGLE LENS (PASTE MODE)", "https://lens.google.com/upload")
