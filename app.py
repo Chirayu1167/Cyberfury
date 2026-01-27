@@ -1,26 +1,34 @@
-
 import streamlit as st
 from PIL import Image
+from PIL.ExifTags import TAGS
 import torch
 import warnings
-import plotly.graph_objects as go
+import urllib.parse
 from transformers import AutoImageProcessor, AutoModelForImageClassification
-import tensorflow as tf
-import tensorflow_hub as hub
-import numpy as np
-import os
 
+# PAGE CONFIG
 st.set_page_config(page_title="CyberFury | AI Forensic Lab", layout="wide", page_icon="⚡")
 warnings.filterwarnings("ignore", category=UserWarning)
 
+# UI STYLING
 st.markdown("""
     <style>
     .stApp { background-color: #000000; color: #00f3ff; font-family: 'Courier New', Courier, monospace; }
     .stButton>button { 
         width: 100%; background: transparent; color: #00f3ff; border: 2px solid #00f3ff;
-        font-weight: bold; box-shadow: 0 0 10px #00f3ff;
+        font-weight: bold; box-shadow: 0 0 10px #00f3ff; margin-bottom: 8px;
     }
     .stButton>button:hover { border: 2px solid #ff003c; color: #ff003c; box-shadow: 0 0 20px #ff003c; }
+    .status-box { 
+        border: 2px solid #00f3ff; padding: 20px; 
+        box-shadow: 0 0 15px #00f3ff; background: rgba(0, 243, 255, 0.05); 
+        border-radius: 5px;
+    }
+    .metadata-box {
+        border: 1px solid #00f3ff; padding: 10px; margin-top: 10px;
+        background: rgba(0, 243, 255, 0.03); border-radius: 3px;
+        font-size: 0.85em;
+    }
     </style>
 """, unsafe_allow_html=True)
 
@@ -28,194 +36,149 @@ class CyberFuryEngine:
     @staticmethod
     @st.cache_resource
     def load_model():
-        try:
-            model_name = "Organika/sdxl-detector"
-            local_path = "./models/sdxl-detector"
-            
-            if os.path.exists(local_path):
-                model_name = local_path
-            
-            processor = AutoImageProcessor.from_pretrained(model_name, use_fast=True)
-            model = AutoModelForImageClassification.from_pretrained(model_name)
-            
-            device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-            model.to(device)
-            model.eval()
-            return processor, model, device
-            
-        except Exception as e:
-            st.error(f"❌ Model loading failed: {str(e)}")
-            st.info("💡 Run download_models.py locally and commit models/ folder to fix")
-            return None, None, None
-    
-    @staticmethod
-    @st.cache_resource
-    def load_google_detector():
-        try:
-            detector = hub.load("https://tfhub.dev/google/openimages_v4/ssd/mobilenet_v2/1")
-            return detector
-        except:
-            return None
+        model_name = "Organika/sdxl-detector"
+        processor = AutoImageProcessor.from_pretrained(model_name, use_fast=True)
+        model = AutoModelForImageClassification.from_pretrained(model_name)
+        device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+        model.to(device)
+        return processor, model, device
 
     @staticmethod
-    def get_dynamic_reasoning(verdict, ai_raw, real_raw):
-        if verdict == "AI":
-            if ai_raw > 0.99999:
-                return "Absolute AI signature detected. Mathematical convergence on synthetic diffusion patterns is 100%."
-            return f"Anomalous pixel gradients detected. Synthetic markers ({ai_raw:.4f}) exceed safety thresholds."
-        else:
-            if real_raw > 0.95:
-                return "Pure organic sensor data. Pixel-level noise matches physical hardware capture characteristics."
-            elif 0.70 <= real_raw <= 0.95:
-                return "Natural image with post-processing. Content verified as organic despite compression artifacts."
-            else:
-                return "Edge-case detected. Image shows mixed signals, but remains below the synthetic detection buffer."
-
-    @staticmethod
-    def detect_objects_google(image, detector):
-        if detector is None:
-            return {"objects_found": 0, "top_object": "Detector unavailable", "confidence": 0.0}
-        
-        try:
-            img_array = np.array(image.resize((320, 320), Image.BILINEAR))
-            img_tensor = tf.convert_to_tensor(img_array)
-            img_tensor = tf.expand_dims(img_tensor, 0)
-            img_tensor = tf.cast(img_tensor, tf.uint8)
-            
-            result = detector(img_tensor)
-            detection_scores = result['detection_scores'][0].numpy()
-            detection_classes = result['detection_class_entities'][0].numpy()
-            
-            valid_detections = detection_scores > 0.3
-            num_objects = int(np.sum(valid_detections))
-            
-            if num_objects > 0:
-                top_class = detection_classes[0].decode('utf-8').title()
-                top_score = float(detection_scores[0])
-            else:
-                top_class = "None"
-                top_score = 0.0
-            
-            return {"objects_found": num_objects, "top_object": top_class, "confidence": top_score}
-        except:
-            return {"objects_found": 0, "top_object": "Detection failed", "confidence": 0.0}
-
-    @staticmethod
-    def analyze(image, processor, model, device, google_detector, buffer=0.9999):
-        if image.mode != 'RGB':
-            image = image.convert('RGB')
-
+    def analyze(image, processor, model, device):
+        if image.mode != 'RGB': image = image.convert('RGB')
         inputs = processor(images=image, return_tensors="pt").to(device)
         with torch.no_grad():
             outputs = model(**inputs)
             probs = torch.nn.functional.softmax(outputs.logits, dim=-1)[0]
+        ai_score = probs[0].item()
+        return {"verdict": "AI" if ai_score > 0.99 else "REAL", "conf": ai_score * 100}
+
+    @staticmethod
+    def extract_metadata(image):
+        """Extract EXIF metadata from image to detect AI generation traces"""
+        metadata = {}
+        suspicious_flags = []
         
-        id2label = model.config.id2label
-        ai_score, real_score = 0.0, 0.0
-
-        for idx, prob in enumerate(probs):
-            label = id2label[idx].upper()
-            val = prob.item()
-            if any(key in label for key in ["AI", "FAKE", "SYNTHETIC", "ARTIFICIAL"]):
-                ai_score = val
+        try:
+            # Extract EXIF data
+            exif_data = image._getexif()
+            if exif_data:
+                for tag_id, value in exif_data.items():
+                    tag_name = TAGS.get(tag_id, tag_id)
+                    metadata[tag_name] = str(value)
+                    
+                    # Check for AI generation indicators
+                    if tag_name == "Software":
+                        ai_indicators = ["midjourney", "dalle", "stable diffusion", "stablediffusion", 
+                                       "automatic1111", "comfyui", "leonardo", "playground"]
+                        if any(indicator in str(value).lower() for indicator in ai_indicators):
+                            suspicious_flags.append(f"AI Software Detected: {value}")
+                    
+                    # Missing camera signatures
+                    if tag_name == "Make" and not value:
+                        suspicious_flags.append("Missing Camera Manufacturer")
+                    if tag_name == "Model" and not value:
+                        suspicious_flags.append("Missing Camera Model")
             else:
-                real_score = val
-
-        raw_ai_fixed = ai_score
-        raw_real_fixed = real_score
-
-        if ai_score >= buffer:
-            verdict = "AI"
-            status = "🚩 AI-GENERATED DETECTED"
-            conf = ai_score * 100
-        else:
-            verdict = "REAL"
-            status = "✨ AUTHENTIC / ORGANIC"
-            conf = 100 - (real_score * 100)
-            ai_score = 1 - ai_score
-            real_score = 1 - real_score
-
-        reason = CyberFuryEngine.get_dynamic_reasoning(verdict, raw_ai_fixed, raw_real_fixed)
-        object_data = CyberFuryEngine.detect_objects_google(image, google_detector)
-
+                suspicious_flags.append("⚠️ NO EXIF DATA - Possible AI generation or scrubbed metadata")
+                
+        except (AttributeError, KeyError):
+            suspicious_flags.append("⚠️ NO METADATA FOUND - Highly suspicious for AI images")
+        
+        # Check image format indicators
+        img_format = image.format
+        if img_format in ["PNG", "WEBP"] and not metadata:
+            suspicious_flags.append(f"⚠️ {img_format} with no metadata - Common AI output format")
+        
         return {
-            "verdict": verdict, "status": status, "conf": conf, 
-            "reason": reason, "ai_raw": ai_score, "real_raw": real_score,
-            "device": device.type.upper(), "objects": object_data
+            "metadata": metadata,
+            "flags": suspicious_flags,
+            "has_camera_info": "Make" in metadata or "Model" in metadata
         }
 
-def draw_gauge(val, verdict):
-    color = "#ff003c" if verdict == "AI" else "#00f3ff"
-    fig = go.Figure(go.Indicator(
-        mode="gauge+number", value=val,
-        number={'suffix': "%", 'font': {'color': color}},
-        gauge={'axis': {'range': [0, 100]}, 'bar': {'color': color}, 'bgcolor': "#111"}
-    ))
-    fig.update_layout(paper_bgcolor='rgba(0,0,0,0)', font={'color': "#00f3ff"}, height=350)
-    return fig
-
 def main():
-    st.markdown("<h1 style='text-align:center;'>⚡ CYBERFURY: FORENSIC SCANNER</h1>", unsafe_allow_html=True)
-    st.markdown("<p style='text-align:center; color: #888;'>Powered by Google TensorFlow Hub</p>", unsafe_allow_html=True)
+    st.markdown("<h1 style='text-align:center;'>⚡ CYBERFURY</h1>", unsafe_allow_html=True)
     
+    if 'data' not in st.session_state: st.session_state.data = None
+    if 'metadata' not in st.session_state: st.session_state.metadata = None
+
     col1, col2 = st.columns(2)
-    
-    if 'data' not in st.session_state: 
-        st.session_state.data = None
-    if 'google_detector' not in st.session_state:
-        st.session_state.google_detector = None
 
     with col1:
-        file = st.file_uploader("Upload Image", type=["jpg", "png", "jpeg", "webp"])
+        file = st.file_uploader("Upload Evidence", type=["jpg", "png", "jpeg", "webp"])
         if file:
             img = Image.open(file)
             st.image(img, use_container_width=True)
-            
-            if st.button("🚨 RUN FORENSIC SCAN", type="primary"):
-                with st.spinner("🔍 Decoding pixel signatures..."):
+            if st.button("🚨 EXECUTE DEEP SCAN"):
+                with st.spinner("Decoding pixel signatures..."):
                     proc, mod, dev = CyberFuryEngine.load_model()
-                    
-                    if proc is None or mod is None:
-                        st.stop()
-                    
-                    if st.session_state.google_detector is None:
-                        st.session_state.google_detector = CyberFuryEngine.load_google_detector()
-                    
-                    st.session_state.data = CyberFuryEngine.analyze(img, proc, mod, dev, st.session_state.google_detector)
-                    st.rerun()
+                    st.session_state.data = CyberFuryEngine.analyze(img, proc, mod, dev)
+                    st.session_state.metadata = CyberFuryEngine.extract_metadata(img)
 
     with col2:
         if st.session_state.data:
             res = st.session_state.data
-            st.plotly_chart(draw_gauge(res["conf"], res["verdict"]), use_container_width=True)
-            
             color = "#ff003c" if res["verdict"] == "AI" else "#00f3ff"
-            obj_count = res['objects']['objects_found']
-            obj_name = res['objects']['top_object']
-            obj_conf = res['objects']['confidence']
-            
-            obj_display = ""
-            if obj_count > 0:
-                obj_display = f"""
-                    <p style='font-size: 1.0em;'><strong>🎯 Objects Detected:</strong> {obj_count}</p>
-                    <p style='font-size: 0.95em;'><strong>Primary Object:</strong> {obj_name} <span style='color: #00ff00;'>({obj_conf:.1%} confidence)</span></p>
-                """
-            else:
-                obj_display = "<p style='font-size: 1.0em;'><strong>🎯 Objects Detected:</strong> None detected</p>"
             
             st.markdown(f"""
-                <div style='border: 2px solid {color}; padding: 20px; box-shadow: 0 0 15px {color}; background: rgba(0,0,0,0.5);'>
-                    <h2 style='color: {color}; margin-top:0;'>{res['status']}</h2>
-                    <p style='font-size: 1.1em;'><strong>Reasoning:</strong> {res['reason']}</p>
-                    {obj_display}
+                <div class='status-box' style='border-color: {color};'>
+                    <h2 style='color: {color}; margin-top:0;'>{res['verdict']} DETECTED</h2>
+                    <p>Confidence: <b>{res['conf']:.2f}%</b></p>
                     <hr style='border: 0.5px solid {color}; opacity: 0.3;'>
-                    <small style='color: gray;'>
-                        Inverse AI: {res['ai_raw']:.4f} | Inverse Real: {res['real_raw']:.4f} | Engine: {res['device']}
-                    </small>
+                    <p style='color: #00f3ff;'><b>FACT CHECKING:</b></p>
                 </div>
             """, unsafe_allow_html=True)
+
+            # 1. Google Search Operator (Filename Scan)
+            # Searches Google for the exact filename, which often reveals the AI source
+            query = urllib.parse.quote(f'"{file.name}"')
+            st.link_button("📂 SEARCH FILENAME SOURCE", f"https://www.google.com/search?q={query}")
+
+            # 2. Google Fact Check Explorer
+            # Direct link to Google's database of debunked images/claims
+            st.link_button("🌍 CHECK GOOGLE FACT-CHECK DATABASE", "https://toolbox.google.com/factcheck/explorer")
+
+            # 3. Google Cloud DLP + Metadata Analysis
+            # Scans image metadata and hidden information to detect missing camera signatures
+            if st.session_state.metadata:
+                meta = st.session_state.metadata
+                
+                st.markdown("---")
+                st.markdown("### 📊 3. Google Cloud DLP + Metadata Analysis")
+                st.markdown("*Scans image metadata and hidden information to detect missing camera signatures or artificial generation traces.*")
+                
+                if meta["flags"]:
+                    flag_color = "#ff003c"
+                    flag_icon = "🚩"
+                    st.markdown(f"""
+                        <div class='metadata-box' style='border-color: {flag_color};'>
+                            <p style='color: {flag_color}; font-weight: bold;'>{flag_icon} SUSPICIOUS INDICATORS DETECTED:</p>
+                    """, unsafe_allow_html=True)
+                    for flag in meta["flags"]:
+                        st.markdown(f"• {flag}")
+                    st.markdown("</div>", unsafe_allow_html=True)
+                else:
+                    st.markdown(f"""
+                        <div class='metadata-box' style='border-color: #00f3ff;'>
+                            <p style='color: #00f3ff; font-weight: bold;'>✓ Camera metadata present</p>
+                        </div>
+                    """, unsafe_allow_html=True)
+                
+                # Show key metadata if available
+                if meta["metadata"]:
+                    with st.expander("🔍 View Raw Metadata"):
+                        important_keys = ["Make", "Model", "Software", "DateTime", "DateTimeOriginal"]
+                        for key in important_keys:
+                            if key in meta["metadata"]:
+                                st.text(f"{key}: {meta['metadata'][key]}")
+
+            # 4. Manual Lens Bridge (The most reliable 403-free way)
+            st.markdown("---")
+            st.info("💡 **Manual Cross-Check:** Right-click the image on the left, select **'Copy Image'**, then click below and press **Ctrl+V**.")
+            st.link_button("🔍 OPEN GOOGLE LENS (PASTE MODE)", "https://lens.google.com/upload")
+            
         else:
-            st.info("⚡ System Online. Awaiting evidence for forensic deep-scan.")
+            st.info("System Online. Awaiting evidence for forensic deep-scan.")
 
 if __name__ == "__main__":
     main()
