@@ -1,95 +1,108 @@
-# README.md
+⚡ CyberFury – AI Forensic Lab
 
-# ⚡ CyberFury AI Forensic Scanner
+CyberFury is an AI-powered forensic analysis web application designed to restore digital trust in the age of synthetic media. It performs deep image inspection using advanced machine learning models and metadata forensics to detect AI-generated or manipulated visuals.
 
-A cutting-edge AI-powered forensic tool that detects AI-generated images with advanced machine learning models and object detection capabilities.
+Built with Streamlit + PyTorch + Transformers, CyberFury combines automated AI detection with real-world verification tools for robust media authentication.
 
-## 🎯 Features
+🚀 Key Features
+🧠 AI Image Authenticity Detection
 
-- **AI Image Detection**: Identifies AI-generated images using state-of-the-art deep learning models
-- **Object Recognition**: Detects and classifies objects within images using Google's TensorFlow Hub
-- **Real-time Analysis**: Instant results with confidence scores and detailed reasoning
-- **Visual Feedback**: Interactive gauge charts showing detection confidence
-- **GPU Acceleration**: Automatically utilizes GPU when available for faster processing
-- **Cyberpunk UI**: Sleek, futuristic dark interface with neon accents
+Uses a deep learning classifier to identify AI-generated images
 
-## 🧠 How It Works
+Outputs real-time verdict: AI Generated or Real
 
-CyberFury uses a dual-engine approach:
+Displays confidence score for transparency
 
-1. **AI Detection Engine**: Analyzes pixel-level patterns and synthetic markers using the `Organika/sdxl-detector` model trained specifically to identify AI-generated content from models like Stable Diffusion, DALL-E, and Midjourney.
+📊 Metadata Forensic Analysis
 
-2. **Object Detection Engine**: Uses Google's OpenImages SSD MobileNet v2 to identify objects within the image, providing additional context about the image content.
+Extracts EXIF metadata from uploaded images
 
-The system examines:
-- Pixel gradient anomalies
-- Synthetic diffusion patterns
-- Compression artifacts
-- Noise characteristics
-- Mathematical convergence patterns
+Detects:
 
-## 📊 Detection Thresholds
+AI generation software traces (Midjourney, Stable Diffusion, DALL·E, etc.)
 
-- **AI-Generated**: Confidence ≥ 99.99%
-- **Authentic/Organic**: Confidence < 99.99%
-- **Buffer Zone**: 0.9999 threshold for edge-case handling
+Missing camera signatures
 
-## 🎨 Use Cases
+Scrubbed or absent metadata
 
-- **Content Verification**: Verify authenticity of images for journalism and research
-- **Social Media Monitoring**: Detect AI-generated content in user uploads
-- **Digital Forensics**: Investigate image manipulation and synthetic media
-- **Academic Research**: Study AI-generated content patterns
-- **Art Authentication**: Distinguish between human-created and AI-generated artwork
+Flags suspicious indicators automatically
 
-## 🔧 Technology Stack
+🔍 Fact-Checking & Source Tracing
 
-- **Frontend**: Streamlit
-- **AI Detection**: PyTorch + HuggingFace Transformers
-- **Object Detection**: TensorFlow + TensorFlow Hub
-- **Visualization**: Plotly
-- **Image Processing**: PIL/Pillow
+Integrated tools for manual verification:
 
-## 📈 Performance
+Google filename source lookup
 
-- **Detection Accuracy**: ~95%+ on AI-generated images
-- **Processing Time**: 2-5 seconds per image (CPU), <1 second (GPU)
-- **Supported Formats**: JPG, PNG, JPEG, WebP
-- **Max Upload Size**: 200MB
+Google Fact Check Explorer
 
-## 🔬 Model Information
+Google Lens reverse image search
 
-**Primary AI Detector:**
-- Model: `Organika/sdxl-detector`
-- Architecture: Image Classification Transformer
-- Training: Specialized for SDXL and diffusion model detection
+⚡ Cyberpunk Forensic UI
 
-**Object Detector:**
-- Model: Google OpenImages v4 SSD MobileNet v2
-- Classes: 600+ object categories
-- Confidence Threshold: 30%
+Neon-style forensic interface
 
-## 🛡️ Limitations
+Real-time scanning feedback
 
-- Detection accuracy varies with image quality and compression
-- May produce false positives on heavily edited real photos
-- Requires clear, non-corrupted images for best results
-- Object detection requires minimum 320x320 resolution
+Clean visualization of results
 
-## 🤝 Contributing
+🎯 Use Cases
 
-Contributions welcome! Please fork the repository and submit a pull request.
+Detecting AI-generated content
 
-## 📄 License
+Media authenticity verification
 
-MIT License - feel free to use for personal and commercial projects.
+Digital forensics research
 
-## 🙏 Acknowledgments
+Journalism fact-checking
 
-- **HuggingFace** for the Organika/sdxl-detector model
-- **Google** for TensorFlow Hub object detection models
-- **Streamlit** for the amazing framework
+Cybersecurity investigations
 
----
+🧩 Tech Stack
 
-**Note**: This tool is for research and verification purposes. Always combine AI detection with human judgment and additional verification methods for critical applications.
+Python
+
+Streamlit
+
+PyTorch
+
+HuggingFace Transformers
+
+Pillow (PIL)
+
+EXIF Metadata Analysis
+
+📸 How It Works
+
+Upload an image
+
+Run deep AI scan
+
+Review:
+
+AI detection results
+
+Confidence score
+
+Metadata forensic flags
+
+Cross-check using built-in verification tools
+
+🔮 Future Enhancements
+
+Video deepfake detection
+
+Audio forgery analysis
+
+Blockchain-based evidence verification
+
+Automated forensic reports
+
+API access for integrations
+
+👨‍💻 Author
+
+Chirayu Mahajan
+BTech – AI & ML
+AI Developer | Python | Generative AI | Computer Vision
+
+📍 MIT Academy of Engineering, Pune
