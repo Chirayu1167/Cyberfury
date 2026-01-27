@@ -4,6 +4,9 @@ import torch
 import warnings
 import plotly.graph_objects as go
 from transformers import AutoImageProcessor, AutoModelForImageClassification
+import tensorflow as tf
+import tensorflow_hub as hub
+import numpy as np
 
 # PAGE CONFIG
 st.set_page_config(page_title="CyberFury | AI Forensic Lab", layout="wide", page_icon="⚡")
@@ -25,18 +28,31 @@ class CyberFuryEngine:
     @staticmethod
     @st.cache_resource
     def load_model():
+        """Load AI detection model with optimization"""
         model_name = "Organika/sdxl-detector"
         processor = AutoImageProcessor.from_pretrained(model_name, use_fast=True)
         model = AutoModelForImageClassification.from_pretrained(model_name)
         
-        # Robust Device Detection
+        # Device Detection
         if torch.cuda.is_available():
             device = torch.device("cuda")
         else:
             device = torch.device("cpu")
             
         model.to(device)
+        model.eval()  # Set to evaluation mode for speed
         return processor, model, device
+    
+    @staticmethod
+    @st.cache_resource
+    def load_google_detector():
+        """Load Google's TensorFlow Hub Object Detection Model - CACHED for speed"""
+        try:
+            detector = hub.load("https://tfhub.dev/google/openimages_v4/ssd/mobilenet_v2/1")
+            return detector
+        except Exception as e:
+            st.warning(f"Google detector loading issue: {e}")
+            return None
 
     @staticmethod
     def get_dynamic_reasoning(verdict, ai_raw, real_raw):
@@ -54,10 +70,60 @@ class CyberFuryEngine:
                 return "Edge-case detected. Image shows mixed signals, but remains below the synthetic detection buffer."
 
     @staticmethod
-    def analyze(image, processor, model, device, buffer=0.9999):
+    def detect_objects_google(image, detector):
+        """Detect objects using Google's TensorFlow Hub model - OPTIMIZED"""
+        if detector is None:
+            return {
+                "objects_found": 0,
+                "top_object": "Detector unavailable",
+                "confidence": 0.0
+            }
+        
+        try:
+            # Convert PIL to tensor with optimization
+            img_array = np.array(image.resize((320, 320), Image.BILINEAR))  # Resize PIL directly
+            img_tensor = tf.convert_to_tensor(img_array)
+            img_tensor = tf.expand_dims(img_tensor, 0)
+            img_tensor = tf.cast(img_tensor, tf.uint8)
+            
+            # Run detection
+            result = detector(img_tensor)
+            
+            # Get detection results
+            detection_scores = result['detection_scores'][0].numpy()
+            detection_classes = result['detection_class_entities'][0].numpy()
+            
+            # Count detections with confidence > 0.3
+            valid_detections = detection_scores > 0.3
+            num_objects = int(np.sum(valid_detections))
+            
+            # Get top detected object
+            if num_objects > 0:
+                top_class = detection_classes[0].decode('utf-8').title()
+                top_score = float(detection_scores[0])
+            else:
+                top_class = "None"
+                top_score = 0.0
+            
+            return {
+                "objects_found": num_objects,
+                "top_object": top_class,
+                "confidence": top_score
+            }
+        except Exception as e:
+            return {
+                "objects_found": 0,
+                "top_object": "Detection failed",
+                "confidence": 0.0
+            }
+
+    @staticmethod
+    def analyze(image, processor, model, device, google_detector, buffer=0.9999):
+        """Main analysis function - OPTIMIZED"""
         if image.mode != 'RGB':
             image = image.convert('RGB')
 
+        # AI Detection
         inputs = processor(images=image, return_tensors="pt").to(device)
         with torch.no_grad():
             outputs = model(**inputs)
@@ -89,11 +155,14 @@ class CyberFuryEngine:
             real_score = 1 - real_score
 
         reason = CyberFuryEngine.get_dynamic_reasoning(verdict, raw_ai_fixed, raw_real_fixed)
+        
+        # Google Object Detection
+        object_data = CyberFuryEngine.detect_objects_google(image, google_detector)
 
         return {
             "verdict": verdict, "status": status, "conf": conf, 
             "reason": reason, "ai_raw": ai_score, "real_raw": real_score,
-            "device": device.type.upper()
+            "device": device.type.upper(), "objects": object_data
         }
 
 def draw_gauge(val, verdict):
@@ -108,20 +177,33 @@ def draw_gauge(val, verdict):
 
 def main():
     st.markdown("<h1 style='text-align:center;'>⚡ CYBERFURY: FORENSIC SCANNER</h1>", unsafe_allow_html=True)
+    st.markdown("<p style='text-align:center; color: #888;'>Powered by Google TensorFlow Hub</p>", unsafe_allow_html=True)
     
     col1, col2 = st.columns(2)
     
-    if 'data' not in st.session_state: st.session_state.data = None
+    if 'data' not in st.session_state: 
+        st.session_state.data = None
+    if 'google_detector' not in st.session_state:
+        st.session_state.google_detector = None
 
     with col1:
         file = st.file_uploader("Upload Image", type=["jpg", "png", "jpeg", "webp"])
         if file:
             img = Image.open(file)
             st.image(img, use_container_width=True)
-            if st.button("🚨 RUN FORENSIC SCAN"):
-                with st.spinner("Decoding pixel signatures..."):
+            
+            if st.button("🚨 RUN FORENSIC SCAN", type="primary"):
+                with st.spinner("🔍 Decoding pixel signatures..."):
                     proc, mod, dev = CyberFuryEngine.load_model()
-                    st.session_state.data = CyberFuryEngine.analyze(img, proc, mod, dev)
+                    if st.session_state.google_detector is None:
+                        with st.spinner("⚙️ Loading Google AI models (one-time setup)..."):
+                            st.session_state.google_detector = CyberFuryEngine.load_google_detector()
+                    
+                    # Run analysis
+                    st.session_state.data = CyberFuryEngine.analyze(
+                        img, proc, mod, dev, st.session_state.google_detector
+                    )
+                    st.rerun()  # Force immediate UI update
 
     with col2:
         if st.session_state.data:
@@ -129,10 +211,24 @@ def main():
             st.plotly_chart(draw_gauge(res["conf"], res["verdict"]), use_container_width=True)
             
             color = "#ff003c" if res["verdict"] == "AI" else "#00f3ff"
+            obj_count = res['objects']['objects_found']
+            obj_name = res['objects']['top_object']
+            obj_conf = res['objects']['confidence']
+            
+            obj_display = ""
+            if obj_count > 0:
+                obj_display = f"""
+                    <p style='font-size: 1.0em;'><strong>🎯 Objects Detected:</strong> {obj_count}</p>
+                    <p style='font-size: 0.95em;'><strong>Primary Object:</strong> {obj_name} <span style='color: #00ff00;'>({obj_conf:.1%} confidence)</span></p>
+                """
+            else:
+                obj_display = "<p style='font-size: 1.0em;'><strong>🎯 Objects Detected:</strong> None detected</p>"
+            
             st.markdown(f"""
                 <div style='border: 2px solid {color}; padding: 20px; box-shadow: 0 0 15px {color}; background: rgba(0,0,0,0.5);'>
                     <h2 style='color: {color}; margin-top:0;'>{res['status']}</h2>
                     <p style='font-size: 1.1em;'><strong>Reasoning:</strong> {res['reason']}</p>
+                    {obj_display}
                     <hr style='border: 0.5px solid {color}; opacity: 0.3;'>
                     <small style='color: gray;'>
                         Inverse AI: {res['ai_raw']:.4f} | Inverse Real: {res['real_raw']:.4f} | Engine: {res['device']}
@@ -140,7 +236,7 @@ def main():
                 </div>
             """, unsafe_allow_html=True)
         else:
-            st.info("System Online. Awaiting evidence for forensic deep-scan.")
+            st.info("⚡ System Online. Awaiting evidence for forensic deep-scan.")
 
 if __name__ == "__main__":
     main()
