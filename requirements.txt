@@ -1,6 +1,8 @@
 streamlit
 torch
 transformers
-pillow
+tensorflow
+tensorflow-hub
+Pillow
+numpy
 plotly
-accelerate
