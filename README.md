@@ -15,7 +15,7 @@ An AI-powered forensic tool to detect AI-generated images using state-of-the-art
 
 ```bash
 # Clone the repository
-git clone <your-repo-url>
+git clone <https://github.com/Chirayu1167/Cyberfury>
 cd cyberfury
 
 # Install dependencies
