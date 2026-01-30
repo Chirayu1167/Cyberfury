@@ -7,37 +7,92 @@ import urllib.parse
 from transformers import AutoImageProcessor, AutoModelForImageClassification
 
 # PAGE CONFIG
-st.set_page_config(page_title="CyberFury | AI Forensic Lab", layout="wide", page_icon="⚡")
+st.set_page_config(page_title="CyberFury | AI Forensic Lab", layout="wide", page_icon="🛡️")
 warnings.filterwarnings("ignore", category=UserWarning)
 
-# UI STYLING
-st.markdown("""
+# UI STYLING - UPDATED TO DEEP NAVY THEME
+st.markdown(f"""
     <style>
-    .stApp { background-color: #000000; color: #00f3ff; font-family: 'Courier New', Courier, monospace; }
-    .stButton>button { 
-        width: 100%; background: transparent; color: #00f3ff; border: 2px solid #00f3ff;
-        font-weight: bold; box-shadow: 0 0 10px #00f3ff; margin-bottom: 8px;
-    }
-    .stButton>button:hover { border: 2px solid #ff003c; color: #ff003c; box-shadow: 0 0 20px #ff003c; }
-    .status-box { 
-        border: 2px solid #00f3ff; padding: 20px; 
-        box-shadow: 0 0 15px #00f3ff; background: rgba(0, 243, 255, 0.05); 
-        border-radius: 5px;
-    }
-    .meter-container {
-        background-color: #111; border: 1px solid #333; height: 25px; width: 100%;
-        border-radius: 12px; margin: 10px 0; overflow: hidden;
-    }
-    .meter-fill {
-        height: 100%; transition: width 0.5s ease-in-out;
-    }
-    .metadata-box {
-        border: 1px solid #00f3ff; padding: 10px; margin-top: 10px;
-        background: rgba(0, 243, 255, 0.03); border-radius: 3px;
-        font-size: 0.85em;
-    }
-    .warning-text { color: #ff003c; font-weight: bold; animation: blinker 1.5s linear infinite; }
-    @keyframes blinker { 50% { opacity: 0; } }
+    /* Main Background */
+    .stApp {{ 
+        background-color: #0F1C2E; 
+        color: #E6EDF5; 
+        font-family: 'Inter', -apple-system, sans-serif; 
+    }}
+    
+    /* Headers */
+    h1, h2, h3 {{ color: #E6EDF5 !important; font-weight: 700; }}
+    
+    /* File Uploader Customization */
+    [data-testid="stFileUploader"] {{
+        background-color: #16263D;
+        padding: 20px;
+        border-radius: 12px;
+        border: 1px dashed #2F80ED;
+    }}
+    
+    /* Browse Files Button Text Color */
+    [data-testid="stFileUploader"] section button {{
+        color: #FFFFFF !important;
+        background-color: #2F80ED !important;
+        border: none !important;
+    }}
+    
+    /* Force upload instructional text to White/Light Gray */
+    [data-testid="stFileUploader"] label, 
+    [data-testid="stFileUploader"] p, 
+    [data-testid="stFileUploader"] small {{
+        color: #E6EDF5 !important;
+    }}
+
+    /* Action Buttons */
+    .stButton>button {{ 
+        width: 100%; 
+        background-color: #2F80ED; 
+        color: white; 
+        border: none;
+        border-radius: 8px;
+        font-weight: bold;
+        padding: 12px;
+    }}
+    .stButton>button:hover {{ 
+        background-color: #56CCF2; 
+        color: #0F1C2E;
+    }}
+    
+    /* Report Cards */
+    .status-box {{ 
+        border: 1px solid #2F80ED; 
+        padding: 24px; 
+        background: #16263D; 
+        border-radius: 12px;
+        box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.3);
+    }}
+    
+    /* Probability Meter */
+    .meter-container {{
+        background-color: #0F1C2E; 
+        height: 18px; 
+        width: 100%;
+        border-radius: 9px; 
+        margin: 15px 0; 
+        overflow: hidden;
+    }}
+    .meter-fill {{
+        height: 100%; 
+        transition: width 0.8s ease-in-out;
+    }}
+    
+    /* Text Styles */
+    .muted-text {{ color: #A0AEC0; font-size: 0.9em; }}
+    
+    .metadata-box {{
+        border-left: 3px solid #56CCF2; 
+        padding: 15px; 
+        margin-top: 15px;
+        background: rgba(86, 204, 242, 0.05); 
+        border-radius: 0 8px 8px 0;
+    }}
     </style>
 """, unsafe_allow_html=True)
 
@@ -60,7 +115,7 @@ class CyberFuryEngine:
             outputs = model(**inputs)
             probs = torch.nn.functional.softmax(outputs.logits, dim=-1)[0]
         ai_score = probs[0].item()
-        return {"verdict": "AI" if ai_score > 0.998 else "REAL", "conf": ai_score * 100}
+        return {"verdict": "DEEPFAKE" if ai_score > 0.998 else "AUTHENTIC", "conf": ai_score * 100}
 
     @staticmethod
     def extract_metadata(image):
@@ -73,78 +128,81 @@ class CyberFuryEngine:
                     tag_name = TAGS.get(tag_id, tag_id)
                     metadata[tag_name] = str(value)
                     if tag_name == "Software":
-                        ai_indicators = ["midjourney", "dalle", "stable diffusion", "stablediffusion", "automatic1111", "comfyui", "leonardo", "playground"]
+                        ai_indicators = ["midjourney", "dalle", "stable diffusion", "automatic1111", "comfyui"]
                         if any(indicator in str(value).lower() for indicator in ai_indicators):
-                            suspicious_flags.append(f"AI Software Detected: {value}")
+                            suspicious_flags.append(f"AI Signature: {value}")
             else:
-                suspicious_flags.append("⚠️ NO EXIF DATA")
+                suspicious_flags.append("NO EXIF DATA FOUND")
         except:
-            suspicious_flags.append("⚠️ METADATA CORRUPTED")
+            suspicious_flags.append("METADATA HEADER CORRUPTED")
         return {"metadata": metadata, "flags": suspicious_flags}
 
 def main():
-    st.markdown("<h1 style='text-align:center;'>⚡ CYBERFURY</h1>", unsafe_allow_html=True)
+    st.markdown("<h1 style='text-align:center; padding-bottom: 30px;'>🛡️ CYBERFURY <span style='color:#56CCF2; font-weight:300;'>| AI Forensic Lab</span></h1>", unsafe_allow_html=True)
     
     if 'data' not in st.session_state: st.session_state.data = None
     if 'metadata' not in st.session_state: st.session_state.metadata = None
 
-    col1, col2 = st.columns(2)
+    col1, col2 = st.columns([1.3, 1])
 
     with col1:
-        file = st.file_uploader("Upload Evidence", type=["jpg", "png", "jpeg", "webp"])
+        st.markdown("### 📥 Evidence Upload")
+        file = st.file_uploader("", type=["jpg", "png", "jpeg", "webp"])
+        
         if file:
             img = Image.open(file)
-            st.image(img, use_container_width=True)
-            if st.button("🚨 EXECUTE DEEP SCAN"):
-                with st.spinner("Decoding pixel signatures..."):
+            st.image(img, use_container_width=True, caption="Current Forensic Subject")
+            if st.button("🚨 RUN SCAN"):
+                with st.spinner("Processing neural artifacts..."):
                     proc, mod, dev = CyberFuryEngine.load_model()
                     st.session_state.data = CyberFuryEngine.analyze(img, proc, mod, dev)
                     st.session_state.metadata = CyberFuryEngine.extract_metadata(img)
 
     with col2:
-        if st.session_state.data:
+        st.markdown("### ⚖️ Analysis Report")
+        
+        # FIXED: Only process if BOTH file exists and analysis has been run
+        if file is not None and st.session_state.data is not None:
             res = st.session_state.data
             score = res["conf"]
-            color = "#ff003c" if score > 90 else "#00f3ff"
             
-            # AI Meter Logic
+            # Theme Color Logic
+            status_color = "#EB5757" if score > 90 else "#27AE60"
+            
             st.markdown(f"""
-                <div class='status-box' style='border-color: {color};'>
-                    <h2 style='color: {color}; margin-top:0;'>{res['verdict']} DETECTED</h2>
-                    <p style='margin-bottom:2px;'>AI INTENSITY RATING:</p>
+                <div class='status-box'>
+                    <h2 style='color: {status_color} !important; margin-top:0;'>{res['verdict']}</h2>
+                    <p class='muted-text' style='margin-bottom:2px;'>SYNTHETIC PROBABILITY:</p>
                     <div class='meter-container'>
-                        <div class='meter-fill' style='width: {score}%; background: {color}; box-shadow: 0 0 10px {color};'></div>
+                        <div class='meter-fill' style='width: {score}%; background: {status_color};'></div>
                     </div>
-                    <p style='text-align:right; font-size:0.8em;'>{score:.2f}% SYNTHETIC PROBABILITY</p>
+                    <p style='text-align:right; font-weight:bold; color:{status_color};'>{score:.2f}% Confidence Score</p>
                 </div>
             """, unsafe_allow_html=True)
 
-            # High Rating Warnings
             if score > 90:
-                st.markdown(f"""
-                    <div style='text-align:center; padding: 10px;'>
-                        <span class='warning-text'>⚠️ HIGH PROBABILITY DETECTED</span><br>
-                        <small style='color:#ff003c;'>[ SIGNAL DEGRADATION: LOW QUALITY OR HEAVY FILTERS DETECTED ]</small>
-                    </div>
-                """, unsafe_allow_html=True)
+                st.markdown(f"<p style='color:#EB5757; background:rgba(235, 87, 87, 0.1); padding:10px; border-radius:5px;'>🚩 <b>High Risk:</b> Synthetic patterns detected in pixel distribution.</p>", unsafe_allow_html=True)
 
             st.markdown("---")
+            st.markdown("#### 🛠️ Forensic Tools")
+            
+            # FIXED: query is now generated safely within the 'if file' block
             query = urllib.parse.quote(f'"{file.name}"')
-            st.link_button("📂 SEARCH FILENAME SOURCE", f"https://www.google.com/search?q={query}")
-            st.link_button("🌍 CHECK GOOGLE FACT-CHECK DATABASE", "https://toolbox.google.com/factcheck/explorer")
+            
+            c1, c2 = st.columns(2)
+            with c1:
+                st.link_button("📂 Filename Origin", f"https://www.google.com/search?q={query}")
+            with c2:
+                st.link_button("🔍 Google Lens", "https://lens.google.com/upload")
 
             if st.session_state.metadata:
                 meta = st.session_state.metadata
                 if meta["flags"]:
-                    st.markdown(f"<div class='metadata-box' style='border-color: #ff003c;'><p style='color: #ff003c; font-weight: bold;'>🚩 FORENSIC ANOMALIES:</p>", unsafe_allow_html=True)
-                    for flag in meta["flags"]: st.markdown(f"• {flag}")
+                    st.markdown(f"<div class='metadata-box'><b style='color:#56CCF2;'>🚩 ANOMALY LOG:</b>", unsafe_allow_html=True)
+                    for flag in meta["flags"]: st.markdown(f"<span style='font-size:0.85em;'>• {flag}</span>", unsafe_allow_html=True)
                     st.markdown("</div>", unsafe_allow_html=True)
-            
-            st.info("💡 **Manual Cross-Check:** Copy image and paste into Google Lens below.")
-            st.link_button("🔍 OPEN GOOGLE LENS", "https://lens.google.com/upload")
-            
         else:
-            st.info("System Online. Awaiting evidence for forensic deep-scan.")
+            st.info("System Ready. Please upload evidence and click 'Run Scan'.")
 
 if __name__ == "__main__":
     main()
