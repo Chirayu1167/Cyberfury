@@ -60,7 +60,7 @@ class CyberFuryEngine:
             outputs = model(**inputs)
             probs = torch.nn.functional.softmax(outputs.logits, dim=-1)[0]
         ai_score = probs[0].item()
-        return {"verdict": "AI" if ai_score > 0.99985 else "REAL", "conf": ai_score * 100}
+        return {"verdict": "AI" if ai_score > 0.998 else "REAL", "conf": ai_score * 100}
 
     @staticmethod
     def extract_metadata(image):
