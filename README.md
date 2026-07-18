@@ -1,10 +1,10 @@
-# ⚡ CyberFury | AI Forensic Lab
+# CyberFury | AI Forensic Lab
 
 **CyberFury** is a high-performance digital forensics tool designed to distinguish between authentic photography and AI-generated imagery. By combining deep learning pixel analysis with exhaustive metadata inspection, it provides a comprehensive verdict on the legitimacy of digital evidence.
 
 ---
 
-## 🚀 Core Features
+## Core Features
 
 ### 1. Neural Pixel Analysis
 The engine utilizes the `Organika/sdxl-detector` transformer model to scan for "synthetic fingerprints"—microscopic patterns left behind by diffusion models like Stable Diffusion XL. It provides a real-time confidence score for every scan.
@@ -25,18 +25,18 @@ To ensure a 360-degree investigation, CyberFury provides direct portals to:
 
 ---
 
-## 🛠 How It Works
+## How It Works
 
 1.  **Upload:** Provide a JPG, PNG, or WEBP file for analysis.
 2.  **Execute:** The `CyberFuryEngine` processes the image through a GPU/CPU-accelerated neural network.
 3.  **Metadata Scrub:** The system extracts and parses EXIF tags, looking for "Suspicious Indicators."
 4.  **Verdict:** The UI generates a high-contrast report:
-    * 🔵 **REAL:** High confidence that the image was captured by a physical camera.
-    * 🔴 **AI:** High probability of synthetic generation.
+    * **REAL:** High confidence that the image was captured by a physical camera.
+    * **AI:** High probability of synthetic generation.
 
 ---
 
-## 📡 Technical Architecture
+## Technical Architecture
 
 * **Frontend:** Streamlit (Cyberpunk-themed UI)
 * **ML Engine:** Hugging Face Transformers (`AutoModelForImageClassification`)
